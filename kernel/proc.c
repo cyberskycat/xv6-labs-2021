@@ -164,6 +164,7 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->trace = 0;
 }
 
 // Create a user page table for a given process,
@@ -313,6 +314,7 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+  np->trace = p->trace;
   release(&np->lock);
 
   return pid;
@@ -444,7 +446,7 @@ scheduler(void)
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
-
+    int found = 0;
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
@@ -458,8 +460,14 @@ scheduler(void)
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
+        found = 1;
       }
       release(&p->lock);
+    }
+      if (found == 0)
+    {
+      intr_on();
+      asm volatile("wfi");
     }
   }
 }
@@ -653,4 +661,17 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+uint64 
+procnum(void){
+  struct proc *p;
+  uint64 num = 0;
+  for (p = proc; p < &proc[NPROC]; p++)
+  {
+    if (p->state == UNUSED)
+      continue;
+    num++;
+  }
+  return num;
 }
