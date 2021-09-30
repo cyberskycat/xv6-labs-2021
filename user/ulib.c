@@ -8,7 +8,6 @@
 #include "user/user.h"
 
 
-
 char*
 strcpy(char *s, const char *t)
 {

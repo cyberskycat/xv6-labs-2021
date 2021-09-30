@@ -126,7 +126,16 @@ found:
     release(&p->lock);
     return 0;
   }
-
+    // Allocate a share page  
+  #ifdef LAB_PGTBL  
+  if((p->ushare= (struct usyscall *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+  p->ushare->pid = p->pid;
+  // printf("aloc id= %d p-> share =%p\n",p->ushare->pid,p->ushare);
+  #endif
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -152,6 +161,11 @@ freeproc(struct proc *p)
 {
   if(p->trapframe)
     kfree((void*)p->trapframe);
+  #ifdef LAB_PGTBL  
+  if(p->ushare)
+  //  printf("p->ushare = %p\n",p->ushare);
+    kfree((void*)p->ushare);
+  #endif  
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
@@ -195,6 +209,19 @@ proc_pagetable(struct proc *p)
     uvmfree(pagetable, 0);
     return 0;
   }
+  
+  //user share page
+  #ifdef LAB_PGTBL
+    if(mappages(pagetable,USYSCALL, PGSIZE,
+                (uint64)(p->ushare), PTE_R|PTE_U) < 0){
+                 printf("maping share page  fail %d %s\n",p->pid,p->name);
+      uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+      uvmunmap(pagetable,TRAPFRAME, 1, 0);
+      uvmfree(pagetable, 0);
+      return 0;
+    }
+  // printf("maping share page succ %d %s\n",p->pid,p->name);
+  #endif
 
   return pagetable;
 }
@@ -206,6 +233,9 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
+  #ifdef LAB_PGTBL
+  uvmunmap(pagetable,USYSCALL, 1, 0);
+  #endif
   uvmfree(pagetable, sz);
 }
 
@@ -444,7 +474,7 @@ scheduler(void)
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
-
+    int found =0;
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
@@ -458,8 +488,14 @@ scheduler(void)
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
+        found = 1;
       }
       release(&p->lock);
+    }
+    if (found == 0)
+    {
+      intr_on();
+      asm volatile("wfi");
     }
   }
 }

@@ -76,14 +76,54 @@ sys_sleep(void)
 }
 
 
-#ifdef LAB_PGTBL
+// #ifdef LAB_PGTBL
 int
 sys_pgaccess(void)
 {
   // lab pgtbl: your code here.
+  uint64 page_start;
+  uint64 start, last;
+  int num;
+  pte_t *pte;
+  uint64 result_addr;
+  unsigned int result_bits = 0;
+  if (argaddr(0, &page_start) < 0 || argint(1, &num) < 0 || argaddr(2, &result_addr) < 0)
+  {
+    return -1;
+  }
+
+  pagetable_t pagetable = myproc()->pagetable;
+  // vmprint(pagetable);
+  start = PGROUNDDOWN(page_start);
+  last = PGROUNDDOWN(start + num * PGSIZE-1 );
+  // printf("ppppppppppppppppp: start=%p  end=%p page_start=%p \n", start,start+PGSIZE, page_start);
+  num=0;
+  for (;;)
+  {
+    if ((pte = walk(pagetable, start, 0)) == 0)
+      return -1;
+    // printf("nnnnnnnnnnnnnnnnn: start=%p end=%p num=%d pte_num=%d pte_flag=%d %p flag=%d \n",start,start+PGSIZE, num,PX(0,start), PTE_FLAGS(*pte), *pte, (*pte & PTE_A));
+    if (*pte & PTE_A)
+    {
+    // printf("nnnnnnnnnnnnnnnnn: start=%p end=%p num=%d pte_num=%d pte_flag=%d %p flag=%d \n",start,start+PGSIZE, num,PX(0,start), PTE_FLAGS(*pte), *pte, (*pte & PTE_A));
+    result_bits = result_bits | 1 << num;
+    //clear Accessed bit flag
+    // *pte = *pte & 0xffffff9f;
+    *pte = *pte >> 10 <<10|  (PTE_FLAGS(*pte) & 0b1110111111);  
+    }
+    num++;
+
+    if (start == last)
+      break;
+    start += PGSIZE;
+  }
+  // printf("reult_bits: %d\n", result_bits);
+  if (copyout(myproc()->pagetable, result_addr, (char *)&result_bits, sizeof(result_bits)) < 0)
+    return -1;
+
   return 0;
 }
-#endif
+// #endif
 
 uint64
 sys_kill(void)

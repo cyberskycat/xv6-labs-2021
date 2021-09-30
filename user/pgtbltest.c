@@ -3,7 +3,7 @@
 #include "kernel/types.h"
 #include "kernel/riscv.h"
 #include "user/user.h"
-
+#include "kernel/memlayout.h"
 void ugetpid_test();
 void pgaccess_test();
 
@@ -29,7 +29,9 @@ void
 ugetpid_test()
 {
   int i;
-
+  // #ifdef LAB_PGTBL
+  //     printf("USYSCALL va address = %p\n",USYSCALL);
+  // #endif
   printf("ugetpid_test starting\n");
   testname = "ugetpid_test";
 
@@ -58,11 +60,13 @@ pgaccess_test()
   buf = malloc(32 * PGSIZE);
   if (pgaccess(buf, 32, &abits) < 0)
     err("pgaccess failed");
+
   buf[PGSIZE * 1] += 1;
   buf[PGSIZE * 2] += 1;
   buf[PGSIZE * 30] += 1;
   if (pgaccess(buf, 32, &abits) < 0)
     err("pgaccess failed");
+  // printf("bbbbbbbbbbbbb: %d\n",abits);
   if (abits != ((1 << 1) | (1 << 2) | (1 << 30)))
     err("incorrect access bits set");
   free(buf);

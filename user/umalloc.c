@@ -81,6 +81,9 @@ malloc(uint nbytes)
         p->s.size = nunits;
       }
       freep = prevp;
+      if(nbytes == 10*4096){
+        printf("kkkkkkkkkkkkkkkkkkkkkkkkkkkk\n");
+      }
       return (void*)(p + 1);
     }
     if(p == freep)
