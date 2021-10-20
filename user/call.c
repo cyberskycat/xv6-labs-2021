@@ -12,6 +12,11 @@ int f(int x) {
 }
 
 void main(void) {
-  printf("%d %d\n", f(8)+1, 13);
+  // // printf("%d %d\n", f(8)+1, 13);
+  // unsigned int i = 0x00646c72;
+  // unsigned int j = 0x00646c73;
+  // unsigned int d = 0x00646c73;
+	// printf("H%x Wo%s pi =%p pj=%p pd=%p \n", 57616, &i,&i,&j,&d);
+ 	printf("x=%d y=%d  \n",3);
   exit(0);
 }

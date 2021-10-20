@@ -77,8 +77,23 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
+    uint nowticks;
+    acquire(&tickslock);
+    nowticks = ticks;
+    release(&tickslock);
+    //TODO iter all proc
+    if (p->alarm_interval != 0 && ( nowticks- p->pasttrick ) >= p->alarm_interval && !p->istimerrun )
+    {
+      // printf("xxxxxxxxxxxx:process_name=%s now=%d past=%d interval=%d handler=%p  \n",p->name,nowticks,p->pasttrick,p->alarm_interval,p->alarmhandler);
+      // printf("size of trapframe %d\n",sizeof(*p->trapframe));
+      memmove(p->trapframesave,p->trapframe,4096);
+      p->pasttrick = nowticks;
+      p->trapframe->epc = p->alarmhandler;
+      p->istimerrun = 1;
+    }
     yield();
+  }
 
   usertrapret();
 }

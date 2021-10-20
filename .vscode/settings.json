@@ -1,0 +1,10 @@
+{
+    "python.pythonPath": "/usr/bin/python",
+    "files.associations": {
+        "*.go": "go",
+        "user.h": "c",
+        "param.h": "c",
+        "types.h": "c",
+        "stat.h": "c"
+    }
+}

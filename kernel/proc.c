@@ -126,7 +126,12 @@ found:
     release(&p->lock);
     return 0;
   }
-
+    // Allocate a trapframe time save  page.
+  if((p->trapframesave = (struct trapframe *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -140,6 +145,11 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+  acquire(&tickslock);
+  p->pasttrick = ticks;
+  release(&tickslock);
+  p->alarm_interval=0;
+  p->istimerrun =0;
 
   return p;
 }
@@ -153,6 +163,10 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+   if(p->trapframesave)
+    kfree((void*)p->trapframesave);
+  p->trapframesave = 0;
+   
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -163,6 +177,10 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+  p->pasttrick=0;
+  p->alarm_interval=0;
+  p->alarmhandler=0;
+  p->istimerrun=0;
   p->state = UNUSED;
 }
 
@@ -444,7 +462,7 @@ scheduler(void)
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
-
+    int found = 0;
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
@@ -458,8 +476,14 @@ scheduler(void)
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
+        found = 1;
       }
       release(&p->lock);
+    }
+      if (found == 0)
+    {
+      intr_on();
+      asm volatile("wfi");
     }
   }
 }

@@ -42,10 +42,15 @@ periodic()
 void
 test0()
 {
-  int i;
+  int i,n;
   printf("test0 start\n");
   count = 0;
-  sigalarm(2, periodic);
+  n=2;
+  // printf("n_addr = %p\n",n);
+  //       typedef void (*handler)();
+  // handler h=periodic;
+  // h();
+  sigalarm(n, &periodic);
   for(i = 0; i < 1000*500000; i++){
     if((i % 1000000) == 0)
       write(2, ".", 1);
