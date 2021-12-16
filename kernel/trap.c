@@ -21,7 +21,7 @@ trapinit(void)
 {
   initlock(&tickslock, "time");
 }
-
+extern int ref_page[];
 // set up to take exceptions and traps while in the kernel.
 void
 trapinithart(void)
@@ -67,8 +67,51 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  }else if(r_scause() == 13 || r_scause() == 15){
+    //copy on write
+    uint64 va_address = PGROUNDDOWN(r_stval());
+    if(va_address >= MAXVA){
+      exit(-1);
+    }
+    pte_t *pte = walk(p->pagetable, va_address, 0);
+    if(pte==0)
+      exit(-1);
+    if((*pte & PTE_V) == 0){
+      // printf("r_scause=%d VA =%p pte=%d\n",r_scause(),va_address,*pte);
+      exit(-1);
+    }
+    uint64 pa = PTE2PA(*pte);
+    uint flags = PTE_FLAGS(*pte);
+
+    if( (*pte & PTE_COW) && !(*pte & PTE_W) ){
+      //only self reference the page
+      // printf("ssssssssssss\n");
+       flags = flags   | PTE_W  ;
+       if(ref_page[(uint64)pa/PGSIZE] == 1){
+          *pte = *pte | flags;
+       }else{
+          char *mem;
+          if ((mem = kalloc()) == 0)
+            exit(-1);
+          memmove(mem, (char *)pa, PGSIZE);
+          *pte = 0;
+          if(mappages(p->pagetable,va_address , PGSIZE, (uint64)mem, flags) != 0)
+          {
+            exit(-1);
+          }
+          //decrement pa address  count
+          if(ref_page[(uint64)pa/PGSIZE] >1){
+              ref_page[(uint64)pa/PGSIZE] = ref_page[(uint64)pa/PGSIZE] -1; 
+          }
+       }
+    }else{
+       printf("usertrap2(): unexpected scause %p pid=%d name=%s r_spec()=%p  \n", r_scause(), p->pid,p->name,p->trapframe->epc);
+       printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+       p->killed = 1;
+    }
+ 
   } else {
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+    printf("usertrap1(): unexpected scause %p pid=%d name=%s\n", r_scause(), p->pid,p->name);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
   }

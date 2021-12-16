@@ -132,3 +132,21 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+
+void
+backtrace(void)
+{
+
+  uint64 current_fp = r_fp();
+  printf("backtrace:\n");
+  uint64 end_addr = PGROUNDUP(current_fp);
+  // printf("fp=%p end=%p\n",current_fp,end_addr);
+  for(;;){
+    printf("%p\n",  *(uint64 *)(current_fp-8));
+    current_fp = *(uint64 *)(current_fp-16);
+    if(current_fp >= end_addr){
+      break;
+    }
+  }
+
+}

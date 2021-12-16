@@ -19,7 +19,6 @@ extern void forkret(void);
 static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
-
 // helps ensure that wakeups of wait()ing
 // parents are not lost. helps obey the
 // memory model when using p->parent.
@@ -275,7 +274,6 @@ fork(void)
   int i, pid;
   struct proc *np;
   struct proc *p = myproc();
-
   // Allocate process.
   if((np = allocproc()) == 0){
     return -1;
@@ -302,7 +300,7 @@ fork(void)
   np->cwd = idup(p->cwd);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
-
+  // printf("parent =%s child =%s \n",p->name,np->name);
   pid = np->pid;
 
   release(&np->lock);
@@ -407,7 +405,9 @@ wait(uint64 addr)
             release(&wait_lock);
             return -1;
           }
+          // printf("free child pid=%d name=%s parent pid =%d name =%s\n",np->pid,np->name,p->pid,p->name);
           freeproc(np);
+          // printf("free ok child pid=%d parent pid =%d\n",np->pid,p->pid);
           release(&np->lock);
           release(&wait_lock);
           return pid;
@@ -444,7 +444,7 @@ scheduler(void)
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
-
+      int found = 0;
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
@@ -458,8 +458,14 @@ scheduler(void)
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
+        found = 1;
       }
       release(&p->lock);
+    }
+          if (found == 0)
+    {
+      intr_on();
+      asm volatile("wfi");
     }
   }
 }

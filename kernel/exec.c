@@ -34,10 +34,9 @@ exec(char *path, char **argv)
     goto bad;
   if(elf.magic != ELF_MAGIC)
     goto bad;
-
+  // printf("exec 1\n");
   if((pagetable = proc_pagetable(p)) == 0)
     goto bad;
-
   // Load program into memory.
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
     if(readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph))
@@ -94,9 +93,11 @@ exec(char *path, char **argv)
   sp -= sp % 16;
   if(sp < stackbase)
     goto bad;
+  // printf("exec 2\n");
   if(copyout(pagetable, sp, (char *)ustack, (argc+1)*sizeof(uint64)) < 0)
     goto bad;
 
+  // printf("exec 3\n");
   // arguments to user main(argc, argv)
   // argc is returned via the system call return
   // value, which goes in a0.
@@ -116,9 +117,11 @@ exec(char *path, char **argv)
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
 
+  // printf("exec 4 path=%s\n",path);
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 
  bad:
+  // printf("bad path=%s\n",path);
   if(pagetable)
     proc_freepagetable(pagetable, sz);
   if(ip){
