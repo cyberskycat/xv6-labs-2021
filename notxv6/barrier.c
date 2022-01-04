@@ -23,14 +23,42 @@ barrier_init(void)
 }
 
 static void 
-barrier()
+barrier( long tn)
 {
   // YOUR CODE HERE
   //
   // Block until all threads have called barrier() and
   // then increment bstate.round.
   //
+  //  pthread_cond_wait(&bstate.barrier_cond,&bstate.barrier_mutex);
+   pthread_mutex_lock(&bstate.barrier_mutex);
+    // printf("tn=%ld lock one\n",tn);
+   bstate.nthread++;
+
+  int round_before = bstate.round; 
+   if(bstate.nthread == nthread){
+     pthread_cond_broadcast(&bstate.barrier_cond);
+    //  printf("tn=%ld round=%d\n",tn, bstate.round);
+     bstate.round++;
+     bstate.nthread=0;
+
+   }else{
+
+
+    //  while(round_before != (bstate.round-1)){
+      // printf("tn=%ld sleep round=%d now round=%d\n",tn,round_before,bstate.round);
+      pthread_cond_wait(&bstate.barrier_cond, &bstate.barrier_mutex);
+      // if(round_before == bstate.round)
+      // printf("wakeup tn=%ld before round=%d now round=%d\n", tn, round_before, bstate.round);
+    //  }
+      // printf("before2 round=%d now round=%d\n ",round_before,bstate.round);
+   }
   
+  //  bstate.nthread--;
+  //  pthread_cond_broadcast(&bstate.barrier_cond);
+   pthread_mutex_unlock(&bstate.barrier_mutex);
+    // printf("tn=%ld lock end\n\n",tn);
+  // usleep(2000);
 }
 
 static void *
@@ -42,9 +70,12 @@ thread(void *xa)
 
   for (i = 0; i < 20000; i++) {
     int t = bstate.round;
+    // printf("thread_num=%ld i=%d \n",n,i);
+    if(i!=t)
+     printf("thread_num=%ld i=%d t=%d \n",n,i,t);
     assert (i == t);
-    barrier();
-    usleep(random() % 100);
+    barrier(n);
+    usleep(random() % 10);
   }
 
   return 0;
