@@ -65,7 +65,7 @@ acquire(struct spinlock *lk)
   if(holding(lk))
     panic("acquire");
 
-#ifdef LAB_LOCK
+#ifdef LAB_LOC
     __sync_fetch_and_add(&(lk->n), 1);
 #endif      
 
