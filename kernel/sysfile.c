@@ -144,6 +144,7 @@ sys_link(void)
 
   if((dp = nameiparent(new, name)) == 0)
     goto bad;
+  printf("new =%s name=%s\n ",new,name) ;
   ilock(dp);
   if(dp->dev != ip->dev || dirlink(dp, name, ip->inum) < 0){
     iunlockput(dp);
@@ -193,19 +194,25 @@ sys_unlink(void)
     return -1;
 
   begin_op();
+  // printf("begin 1 unlink %s\n",path); 
   if((dp = nameiparent(path, name)) == 0){
     end_op();
     return -1;
   }
 
+  // printf("begin 2 unlink %s\n",path); 
   ilock(dp);
 
   // Cannot unlink "." or "..".
   if(namecmp(name, ".") == 0 || namecmp(name, "..") == 0)
     goto bad;
 
-  if((ip = dirlookup(dp, name, &off)) == 0)
+  // printf("begin 3 unlink %s\n",path); 
+  if((ip = dirlookup(dp, name, &off)) == 0){
+    // printf("after unlink %s not found \n",path); 
     goto bad;
+  }
+  // printf("begin 4 unlink %s\n",path); 
   ilock(ip);
 
   if(ip->nlink < 1)
@@ -229,12 +236,13 @@ sys_unlink(void)
   iunlockput(ip);
 
   end_op();
-
+  // printf("unlink %s success\n",path); 
   return 0;
 
 bad:
   iunlockput(dp);
   end_op();
+  // printf("unlink %s fail\n",path); 
   return -1;
 }
 
@@ -252,7 +260,8 @@ create(char *path, short type, short major, short minor)
   if((ip = dirlookup(dp, name, 0)) != 0){
     iunlockput(dp);
     ilock(ip);
-    if(type == T_FILE && (ip->type == T_FILE || ip->type == T_DEVICE))
+    if((type == T_FILE  ) && (ip->type == T_FILE || ip->type == T_DEVICE))
+    // if((type == T_FILE || type == T_SYMLINK ) && (ip->type == T_FILE || ip->type == T_SYMLINK || ip->type == T_DEVICE))
       return ip;
     iunlockput(ip);
     return 0;
@@ -313,6 +322,61 @@ sys_open(void)
       iunlockput(ip);
       end_op();
       return -1;
+    }
+    if(ip->type == T_SYMLINK ){
+        char name_link[MAXPATH]; 
+        char name_symol[MAXPATH]; 
+        uint inode_cache[10];
+        uint r=0;
+        inode_cache[0]=ip->inum;
+        struct inode *dp;
+        if( !(omode & O_NOFOLLOW)){//get linked file
+          do{
+            if(r>=10){
+              printf("too  deep\n");
+              end_op();
+              return -1;
+            }
+            if(readi(ip, 0, (uint64)&name_link,0, MAXPATH) != MAXPATH){
+             iunlockput(ip);
+             end_op(); 
+             return -1;
+            }
+            iunlock(ip);
+            if(name_link[0] == '/'){
+              ip = namei(name_link);
+            }else{//relatively path
+              if((dp = nameiparent(path, name_symol)) == 0){
+                iunlockput(ip);
+                end_op();
+                return -1;
+              }
+              ilock(dp);
+              ip=dirlookup(dp,name_link,0);
+              iunlockput(dp);
+            }
+            if(ip == 0){
+              end_op();
+              return -1;
+            }
+            ilock(ip);
+            for(int k=0;k<10;k++){
+              if(inode_cache[k] == 0){
+                break;
+              }
+              if (inode_cache[k] == ip->inum ){
+                printf("found cycle\n");
+                iunlockput(ip);
+                end_op();
+                return -1;
+              }
+            }
+            r++;
+            
+
+          }while(ip->type == T_SYMLINK);
+        }
+
     }
   }
 
@@ -484,3 +548,44 @@ sys_pipe(void)
   }
   return 0;
 }
+
+uint64
+sys_symlink(void)
+{
+  char name[MAXPATH], new[MAXPATH], old[MAXPATH];
+  // char *targetname; 
+  struct inode *dp, *ip;
+
+  if (argstr(0, old, MAXPATH) < 0 || argstr(1, new, MAXPATH) < 0)
+    return -1;
+  //check symlink whether already exists  
+  if((ip = namei(new)) != 0){
+  //  printf("symlink exists\n"); 
+   return -1;
+  }
+  begin_op();
+  ip = create(new,T_SYMLINK, 0, 0);
+  if(ip == 0){
+   end_op();
+   return -1;
+  }
+  ///testsymlink/b ====> /testsymlink/a
+  memset(name,0,MAXPATH);
+  if ((dp = nameiparent(old, name)) == 0)
+    goto bad;
+
+  //witre target path to inode 
+  if(writei(ip, 0, (uint64)&name,0, sizeof(name)) != sizeof(name)){
+    goto bad;
+  }
+  iunlockput(ip);
+  end_op();
+  return 0;
+
+bad:
+  ip->nlink--;
+  iupdate(ip);
+  iunlockput(ip);
+  end_op();
+  return -1;
+  }

@@ -387,7 +387,8 @@ bmap(struct inode *ip, uint bn)
   }
   bn -= NDIRECT;
 
-  if(bn < NINDIRECT){
+  // printf("double num:%d\n",bn);
+  if(bn < NINDIRECT){ //256 indirect blocks
     // Load indirect block, allocating if necessary.
     if((addr = ip->addrs[NDIRECT]) == 0)
       ip->addrs[NDIRECT] = addr = balloc(ip->dev);
@@ -396,7 +397,39 @@ bmap(struct inode *ip, uint bn)
     if((addr = a[bn]) == 0){
       a[bn] = addr = balloc(ip->dev);
       log_write(bp);
+    }  
+    
+    brelse(bp);
+    return addr;
+  }
+  bn -= NINDIRECT;
+  if (bn < NINDIRECT2){ //  65,536 double indirect blocks
+    // printf("double num:%d\n",bn);
+    //middle index 
+    if ((addr = ip->addrs[NDIRECT + 1]) == 0)
+      ip->addrs[NDIRECT + 1] = addr = balloc(ip->dev);
+    bp = bread(ip->dev, addr);
+    a = (uint *)bp->data;
+    uint b_index = bn / NINDIRECT; 
+    uint b_offset = bn % NINDIRECT;
+    // printf("login block num:%d b_index=%d b_offset =%d\n",bn,b_index,b_offset);
+    if((addr = a[b_index]) == 0)
+    {
+      a[b_index] = addr = balloc(ip->dev);
+      log_write(bp);
     }
+    brelse(bp);
+
+    //end index 
+    bp = bread(ip->dev, addr);
+    a = (uint *)bp->data;
+    if((addr = a[b_offset]) == 0)
+    {
+      a[b_offset] = addr = balloc(ip->dev);
+      log_write(bp);
+    } 
+
+    //  printf("login block num:%d b_index=%d b_offset =%d addr=%d\n",bn,b_index,b_offset,addr);
     brelse(bp);
     return addr;
   }
@@ -410,8 +443,8 @@ void
 itrunc(struct inode *ip)
 {
   int i, j;
-  struct buf *bp;
-  uint *a;
+  struct buf *bp,*bp1;
+  uint *a,*a1;
 
   for(i = 0; i < NDIRECT; i++){
     if(ip->addrs[i]){
@@ -432,6 +465,26 @@ itrunc(struct inode *ip)
     ip->addrs[NDIRECT] = 0;
   }
 
+  //double direct
+  if(ip->addrs[NDIRECT+1]){
+    bp = bread(ip->dev, ip->addrs[NDIRECT+1]);
+    a = (uint*)bp->data;
+    for(j = 0; j < NINDIRECT; j++){
+      if(a[j]){
+        bp1 = bread(ip->dev,a[j]);
+        a1 = (uint*)bp1->data;
+        for(int k=0;k<NINDIRECT;k++){
+           if(a1[k])
+              bfree(ip->dev, a1[k]);
+        }
+        brelse(bp1);
+        bfree(ip->dev, a[j]);
+      }
+    }
+    brelse(bp);
+    bfree(ip->dev, ip->addrs[NDIRECT]);
+    ip->addrs[NDIRECT] = 0;
+  }
   ip->size = 0;
   iupdate(ip);
 }
@@ -493,8 +546,8 @@ writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
     return -1;
   if(off + n > MAXFILE*BSIZE)
     return -1;
-
   for(tot=0; tot<n; tot+=m, off+=m, src+=m){
+    // printf("size =%d off=%d\n ",ip->size,off);
     bp = bread(ip->dev, bmap(ip, off/BSIZE));
     m = min(n - tot, BSIZE - off%BSIZE);
     if(either_copyin(bp->data + (off % BSIZE), user_src, src, m) == -1) {
