@@ -9,14 +9,20 @@
 #define NCHILD 2
 #define N 100000
 #define SZ 4096
-
+int countfree();
 void test1(void);
 void test2(void);
 char buf[SZ];
-
+int
+cpuid()
+{
+  int id = r_tp();
+  return id;
+}
 int
 main(int argc, char *argv[])
 {
+  
   test1();
   test2();
   exit(0);
@@ -41,6 +47,8 @@ void test1(void)
 {
   void *a, *a1;
   int n, m;
+  // printf("test1 countfree %d\n",countfree());
+  // exit(1);
   printf("start test1\n");  
   m = ntas(0);
   for(int i = 0; i < NCHILD; i++){

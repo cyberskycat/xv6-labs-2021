@@ -23,32 +23,63 @@
 #include "fs.h"
 #include "buf.h"
 
-struct {
+// struct {
+//   struct spinlock lock;
+//   struct buf buf[NBUF];
+
+//   // Linked list of all buffers, through prev/next.
+//   // Sorted by how recently the buffer was used.
+//   // head.next is most recent, head.prev is least.
+//   struct buf head;
+// } bcache;
+
+#define HSIZE 31
+struct bcache_segment {
   struct spinlock lock;
   struct buf buf[NBUF];
-
-  // Linked list of all buffers, through prev/next.
-  // Sorted by how recently the buffer was used.
-  // head.next is most recent, head.prev is least.
   struct buf head;
-} bcache;
+};
 
+struct bhash_table{
+ struct  bcache_segment bs[HSIZE];
+};
+
+uint32 hash(uint32 x) {
+    // x = ((x >> 16) ^ x) * 0x45d9f3b;
+    // x = ((x >> 16) ^ x) * 0x45d9f3b;
+    // x = (x >> 16) ^ x;
+    // return x%HSIZE;
+    return x*2654435761 % HSIZE;
+}
+
+struct bcache_segment* getbucket(struct bhash_table* ht,uint blockno){
+   uint h = hash(blockno);
+  //  printf("get bucket =%d\n",h);
+   return &ht->bs[h];
+}
+
+struct bhash_table bht;
 void
 binit(void)
 {
   struct buf *b;
 
-  initlock(&bcache.lock, "bcache");
+  for (int i =0; i<HSIZE;i++){
+    struct bcache_segment* bs = &bht.bs[i];
+    initlock(&bs->lock, "bcache");
+    printf("bcache lock init pointer =%p index=%d size=%d\n",bs,i,NBUF);
+    // Create linked list of buffers
+    bs->head.prev = &bs->head;
+    bs->head.next = &bs->head;
+    for(b = bs->buf; b < bs->buf+NBUF; b++){
+      b->next = bs->head.next;
+      b->prev = &bs->head;
+      // printf("b->next =%p b->prev =%p b=%p \n",b->next,b->prev,b);
 
-  // Create linked list of buffers
-  bcache.head.prev = &bcache.head;
-  bcache.head.next = &bcache.head;
-  for(b = bcache.buf; b < bcache.buf+NBUF; b++){
-    b->next = bcache.head.next;
-    b->prev = &bcache.head;
-    initsleeplock(&b->lock, "buffer");
-    bcache.head.next->prev = b;
-    bcache.head.next = b;
+      initsleeplock(&b->lock, "buffer");
+      bs->head.next->prev = b;
+      bs->head.next = b;
+    }
   }
 }
 
@@ -59,14 +90,16 @@ static struct buf*
 bget(uint dev, uint blockno)
 {
   struct buf *b;
-
-  acquire(&bcache.lock);
+  struct bcache_segment* bs =  getbucket(&bht,blockno);
+  // printf("get bs pointer=%p \n",bs);
+  acquire(&bs->lock);
 
   // Is the block already cached?
-  for(b = bcache.head.next; b != &bcache.head; b = b->next){
+  for(b = bs->head.next; b != &bs->head; b = b->next){
     if(b->dev == dev && b->blockno == blockno){
+    // printf("blockno=%d  dev =%d \n",b->blockno,b->dev);
       b->refcnt++;
-      release(&bcache.lock);
+      release(&bs->lock);
       acquiresleep(&b->lock);
       return b;
     }
@@ -74,13 +107,13 @@ bget(uint dev, uint blockno)
 
   // Not cached.
   // Recycle the least recently used (LRU) unused buffer.
-  for(b = bcache.head.prev; b != &bcache.head; b = b->prev){
+  for(b = bs->head.prev; b != &bs->head; b = b->prev){
     if(b->refcnt == 0) {
       b->dev = dev;
       b->blockno = blockno;
       b->valid = 0;
       b->refcnt = 1;
-      release(&bcache.lock);
+      release(&bs->lock);
       acquiresleep(&b->lock);
       return b;
     }
@@ -120,34 +153,36 @@ brelse(struct buf *b)
     panic("brelse");
 
   releasesleep(&b->lock);
-
-  acquire(&bcache.lock);
+  struct bcache_segment* bs =  getbucket(&bht,b->blockno);
+  acquire(&bs->lock);
   b->refcnt--;
   if (b->refcnt == 0) {
     // no one is waiting for it.
     b->next->prev = b->prev;
     b->prev->next = b->next;
-    b->next = bcache.head.next;
-    b->prev = &bcache.head;
-    bcache.head.next->prev = b;
-    bcache.head.next = b;
+    b->next = bs->head.next;
+    b->prev = &bs->head;
+    bs->head.next->prev = b;
+    bs->head.next = b;
   }
   
-  release(&bcache.lock);
+  release(&bs->lock);
 }
 
 void
 bpin(struct buf *b) {
-  acquire(&bcache.lock);
+  struct bcache_segment* bs =  getbucket(&bht,b->blockno);
+  acquire(&bs->lock);
   b->refcnt++;
-  release(&bcache.lock);
+  release(&bs->lock);
 }
 
 void
 bunpin(struct buf *b) {
-  acquire(&bcache.lock);
+  struct bcache_segment* bs =  getbucket(&bht,b->blockno);
+  acquire(&bs->lock);
   b->refcnt--;
-  release(&bcache.lock);
+  release(&bs->lock);
 }
 
 
